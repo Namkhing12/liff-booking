@@ -1,0 +1,79 @@
+body {
+  margin: 0;
+  font-family: 'Segoe UI', 'Noto Sans Thai', sans-serif;
+  background-color: #f1f6f9;
+}
+
+.booking-container {
+  display: flex;
+  justify-content: center;
+  padding: 30px 20px;
+}
+
+.form-card {
+  background: #ffffff;
+  padding: 30px 25px;
+  border-radius: 16px;
+  max-width: 480px;
+  width: 100%;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.12);
+  border-top: 6px solid #4caf50;
+}
+
+h2 {
+  text-align: center;
+  color: #2d3e50;
+  margin-bottom: 24px;
+  font-size: 22px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 18px;
+}
+
+label {
+  margin-bottom: 6px;
+  font-weight: 600;
+  color: #34495e;
+}
+
+input,
+textarea {
+  font-size: 16px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  border: 1px solid #ccd6dd;
+  background-color: #fdfdfd;
+  transition: border-color 0.3s ease;
+}
+
+input:focus,
+textarea:focus {
+  border-color: #4caf50;
+  outline: none;
+  background-color: #ffffff;
+}
+
+textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+.btn-submit {
+  width: 100%;
+  padding: 14px;
+  font-size: 16px;
+  background-color: #4caf50;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.btn-submit:hover {
+  background-color: #43a047;
+}
