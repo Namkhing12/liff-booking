@@ -6,7 +6,6 @@ import './App.css'
 
 function App() {
   const [name, setName] = useState('')
-  const [idCard, setIdCard] = useState('')
   const [phone, setPhone] = useState('')
   const [date, setDate] = useState('')
   const [time, setTime] = useState('')
@@ -26,53 +25,59 @@ function App() {
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
-  e.preventDefault()
+    e.preventDefault()
 
-  const profile = await liff.getProfile()
-  const lineId = profile.userId
+    const profile = await liff.getProfile()
+    const lineId = profile.userId
 
-  // 🔍 ตรวจสอบว่ามีคนจองวันและเวลานี้ไปแล้วหรือยัง
-  const { data: existing, error: fetchError } = await supabase
-    .from('appointments')
-    .select('*')
-    .eq('date', date)
-    .eq('time', time)
+    // ตรวจสอบว่าคิวนั้นถูกจองไปหรือยัง
+    const { data: existing, error: fetchError } = await supabase
+      .from('appointments')
+      .select('*')
+      .eq('date', date)
+      .eq('time', time)
 
-  if (fetchError) {
-    alert('เกิดข้อผิดพลาดในการตรวจสอบข้อมูลเวลา')
-    return
-  }
+    if (fetchError) {
+      alert('เกิดข้อผิดพลาดในการตรวจสอบเวลา')
+      return
+    }
 
-  if (existing && existing.length > 0) {
-    alert('⛔ เต็มแล้ว กรุณาเลือกเวลาอื่น')
-    return
-  }
+    if (existing && existing.length > 0) {
+      alert('⛔ เต็มแล้ว กรุณาเลือกเวลาอื่น')
+      return
+    }
 
-  // ✅ ถ้ายังไม่มีคนจอง → ดำเนินการบันทึก
-  const { error } = await supabase.from('appointments').insert([
-    {
-      name,
-      id_card: idCard || null,
-      phone: phone || null,
-      date,
-      time,
-      symptom,
-      line_id: lineId,
-    },
-  ])
-
-  if (!error) {
-    await liff.sendMessages([
+    // บันทึกลง Supabase
+    const { error } = await supabase.from('appointments').insert([
       {
-        type: 'text',
-        text: `✅ จองสำเร็จ\n👤 ชื่อ: ${name}\n📅 วันที่: ${date}\n🕒 เวลา: ${time}\n📋 อาการ: ${symptom}`,
+        name,
+        phone,
+        date,
+        time,
+        symptom,
+        line_id: lineId,
       },
     ])
-    liff.closeWindow()
-  } else {
-    alert('เกิดข้อผิดพลาดในการจองคิว')
+
+    // เรียก Google Apps Script เพื่อจอง Google Calendar
+    const response = await fetch('https://script.google.com/macros/s/AKfycbzsRAXOTUUhh7QQYDZQS3HQihXLc6H3Awot0WjuakVzuRIKA5XZPAb2ZCbhtthOLLFV9Q/exec', {
+      method: 'POST',
+      body: JSON.stringify({ name, date, time, symptom }),
+      headers: { 'Content-Type': 'application/json' },
+    })
+
+    if (!error && response.ok) {
+      await liff.sendMessages([
+        {
+          type: 'text',
+          text: `✅ จองสำเร็จ!\n👤 ชื่อ: ${name}\n📅 วันที่: ${date}\n🕒 เวลา: ${time}\n📋 อาการ: ${symptom}`,
+        },
+      ])
+      liff.closeWindow()
+    } else {
+      alert('เกิดข้อผิดพลาดในการจอง')
+    }
   }
-}
 
   return (
     <div className="booking-container">
@@ -84,15 +89,11 @@ function App() {
             <input value={name} onChange={(e) => setName(e.target.value)} required />
           </div>
           <div className="form-group">
-            <label>🆔 เลขบัตรประชาชน (ไม่บังคับ):</label>
-            <input value={idCard} onChange={(e) => setIdCard(e.target.value)} />
-          </div>
-          <div className="form-group">
-            <label>📱 เบอร์โทร (ไม่บังคับ):</label>
+            <label>📱 เบอร์โทร:</label>
             <input value={phone} onChange={(e) => setPhone(e.target.value)} />
           </div>
           <div className="form-group">
-            <label>📅 วันที่ต้องการเข้ารับบริการ:</label>
+            <label>📅 วันที่:</label>
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
           </div>
           <div className="form-group">
