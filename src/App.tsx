@@ -89,9 +89,17 @@ function App() {
             <input value={name} onChange={(e) => setName(e.target.value)} required />
           </div>
           <div className="form-group">
-            <label>📱 เบอร์โทร:</label>
-            <input value={phone} onChange={(e) => setPhone(e.target.value)} />
-          </div>
+      <label>📱 เบอร์โทร:</label>
+  <input
+    type="tel"
+    value={phone}
+    onChange={(e) => setPhone(e.target.value.replace(/\D/g, ''))}
+    pattern="[0-9]*"
+    inputMode="numeric"
+    required
+  />
+</div>
+
           <div className="form-group">
             <label>📅 วันที่:</label>
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
