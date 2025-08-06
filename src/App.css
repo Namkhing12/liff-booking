@@ -1,7 +1,9 @@
+@import url('https://fonts.googleapis.com/css2?family=Mitr:wght@300;400;500;600;700&family=Noto+Sans+Thai:wght@300;400;500;600;700&display=swap');
+
 /* Reset */
 body {
   margin: 0;
-  font-family: 'Segoe UI', 'Noto Sans Thai', sans-serif;
+  font-family:'Noto Sans Thai', sans-serif;
   background-color: #f1f6f9;
 }
 
