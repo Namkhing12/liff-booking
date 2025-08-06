@@ -60,7 +60,7 @@ function App() {
     ])
 
     // เรียก Google Apps Script เพื่อจอง Google Calendar
-    const response = await fetch('https://script.google.com/macros/s/AKfycbzsRAXOTUUhh7QQYDZQS3HQihXLc6H3Awot0WjuakVzuRIKA5XZPAb2ZCbhtthOLLFV9Q/exec', {
+    const response = await fetch('https://script.google.com/macros/s/AKfycbxs1LqDpES8OxbzyoDz1as7qDp3qbFj10sLrLESlrpp7A_BewLpnNGgho681OBtvWAm1A/exec', {
       method: 'POST',
       body: JSON.stringify({ name, date, time, symptom }),
       headers: { 'Content-Type': 'application/json' },
