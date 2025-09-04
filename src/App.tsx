@@ -108,26 +108,6 @@ function App() {
         return
       }
 
-      // 3) ส่งข้อมูลไป Google Apps Script
-      const response = await fetch(
-        'https://script.google.com/macros/s/AKfycbxs1LqDpES8OxbzyoDz1as7qDp3qbFj10sLrLESlrpp7A_BewLpnNGgho681OBtvWAm1A/exec',
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: _name,
-            phone: _phone,
-            date: _date,
-            time: toDbTime(_time),
-            symptom: _symptom,
-          }),
-        }
-      )
-
-      if (!response.ok) {
-        const text = await response.text().catch(() => '')
-        throw new Error(`Google Apps Script error: ${text || response.status}`)
-      }
 
       // ✅ แจ้งผู้ใช้ในหน้านี้ (แทนส่ง LINE)
       alert(
