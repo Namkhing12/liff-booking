@@ -7,8 +7,8 @@ import './App.css'
 function App() {
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
-  const [date, setDate] = useState('')   // YYYY-MM-DD
-  const [time, setTime] = useState('')   // HH:mm
+  const [date, setDate] = useState('')
+  const [time, setTime] = useState('')
   const [symptom, setSymptom] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -26,27 +26,6 @@ function App() {
     })()
   }, [])
 
-  useEffect(() => {
-    const fetchData = async () => {
-      const { data, error } = await supabase
-        .from('appointments')
-        .select('*')
-      if (error) {
-        // Log รายละเอียด error
-        console.error(
-          'Supabase select error:',
-          error.message,
-          error.details,
-          error.hint
-        )
-        // แจ้งเตือนผู้ใช้
-        alert('เกิดข้อผิดพลาดในการตรวจสอบเวลา')
-      }
-      // ...existing code...
-    }
-    fetchData()
-  }, [])
-
   const generateTimeSlots = () => {
     const times: string[] = []
     for (let hour = 8; hour <= 17; hour++) {
@@ -56,12 +35,8 @@ function App() {
     return times
   }
 
-  // รวม date + time → scheduled_at
-  const toScheduledAt = (d: string, t: string) => {
-    if (!d || !t) return null
-    const fullTime = t.length === 5 ? `${t}:00` : t
-    return new Date(`${d}T${fullTime}`)
-  }
+  // ถ้า column time เป็น TIME → ต้อง HH:mm:ss
+  const toDbTime = (t: string) => (t && t.length === 5 ? `${t}:00` : t)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -72,7 +47,7 @@ function App() {
       const _name = name.trim()
       const _phone = phone.trim()
       const _date = date.trim()
-      const _time = time.trim()
+      const _time = toDbTime(time.trim())
       const _symptom = symptom.trim()
 
       if (!_name || !_phone || !_date || !_time || !_symptom) {
@@ -80,61 +55,68 @@ function App() {
         return
       }
 
-      const scheduledAtDate = toScheduledAt(_date, _time)
-      if (!scheduledAtDate) {
-        alert('เวลาไม่ถูกต้อง')
-        return
-      }
-      const scheduledAt = scheduledAtDate.toISOString()
-
       if (!liff.isLoggedIn()) {
         liff.login()
         return
       }
 
-      let lineId: string | null = null
+      // (คงการดึงโปรไฟล์ไว้เผื่อใช้ส่งข้อความ/แสดงชื่อ)
       try {
-        const profile = await liff.getProfile()
-        lineId = profile.userId
+        await liff.getProfile()
       } catch (err) {
-        console.warn('LIFF getProfile error:', err)
+        console.error('LIFF getProfile error:', err)
       }
 
-      // 1) ตรวจว่ามีคิวนี้แล้วหรือยัง
+      // 1) check duplicate
       const { error: checkErr, count } = await supabase
         .from('appointments')
         .select('id', { count: 'exact', head: true })
-        .eq('scheduled_at', scheduledAt)
+        .eq('date', _date)
+        .eq('time', _time)
 
       if (checkErr) {
-        console.error('Supabase select error:', checkErr)
+        console.error('Supabase select error:', {
+          message: checkErr.message,
+          details: checkErr.details,
+          hint: checkErr.hint,
+          code: (checkErr as any).code,
+        })
         alert(`ตรวจสอบเวลาล้มเหลว: ${checkErr.message}`)
         return
       }
+
       if ((count ?? 0) > 0) {
         alert('⛔ เต็มแล้ว กรุณาเลือกเวลาอื่น')
         return
       }
 
-      // 2) Insert
+      // 2) insert (ตัด line_id ออกแล้ว)
       const { error: insertErr } = await supabase.from('appointments').insert([
         {
-          patient_name: _name,
-          hn: _phone,
-          scheduled_at: scheduledAt,
-          chief: _symptom,
-          // เพิ่ม line_id เองถ้าคุณ ALTER TABLE แล้ว
-          line_id: lineId,
+          name: _name,
+          phone: _phone,
+          date: _date,
+          time: _time,
+          symptom: _symptom,
         },
       ])
 
       if (insertErr) {
-        console.error('Supabase insert error:', insertErr)
-        alert(`เกิดข้อผิดพลาดในการจอง: ${insertErr.message}`)
+        console.error('Supabase insert error:', {
+          message: insertErr.message,
+          details: insertErr.details,
+          hint: insertErr.hint,
+          code: (insertErr as any).code,
+        })
+        if ((insertErr as any).code === '23505') {
+          alert('⛔ เวลาโดนจองพอดี กรุณาเลือกเวลาอื่น')
+        } else {
+          alert(`เกิดข้อผิดพลาดในการจอง: ${insertErr.message}`)
+        }
         return
       }
 
-      // 3) ส่ง Google Apps Script (optional)
+      // 3) call Google Apps Script
       const response = await fetch(
         'https://script.google.com/macros/s/AKfycbxs1LqDpES8OxbzyoDz1as7qDp3qbFj10sLrLESlrpp7A_BewLpnNGgho681OBtvWAm1A/exec',
         {
@@ -142,8 +124,8 @@ function App() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             name: _name,
-            phone: _phone,
-            scheduled_at: scheduledAt,
+            date: _date,
+            time: _time,
             symptom: _symptom,
           }),
         }
@@ -154,18 +136,17 @@ function App() {
         throw new Error(`Google Apps Script error: ${text || response.status}`)
       }
 
-      // 4) ส่งข้อความยืนยันกลับ LINE
+      // 4) LINE confirm
       try {
         await liff.sendMessages([
           {
             type: 'text',
-            text: `✅ จองสำเร็จ!\n👤 ชื่อ: ${_name}\n📱 เบอร์: ${_phone}\n📅 เวลา: ${scheduledAtDate.toLocaleString()}\n📋 อาการ: ${_symptom}`,
+            text: `✅ จองสำเร็จ!\n👤 ชื่อ: ${_name}\n📅 วันที่: ${_date}\n🕒 เวลา: ${time}\n📋 อาการ: ${_symptom}`,
           },
         ])
       } catch (err) {
         console.warn('sendMessages failed:', err)
       }
-
       liff.closeWindow()
     } catch (err: any) {
       console.error('Unexpected error:', err)
@@ -182,7 +163,11 @@ function App() {
         <form onSubmit={handleSubmit}>
           <div className="form-group">
             <label>👤 ชื่อ-นามสกุล:</label>
-            <input value={name} onChange={(e) => setName(e.target.value)} required />
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+            />
           </div>
 
           <div className="form-group">
@@ -199,12 +184,21 @@ function App() {
 
           <div className="form-group">
             <label>📅 วันที่:</label>
-            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              required
+            />
           </div>
 
           <div className="form-group">
             <label>🕒 เวลา:</label>
-            <select value={time} onChange={(e) => setTime(e.target.value)} required>
+            <select
+              value={time}
+              onChange={(e) => setTime(e.target.value)}
+              required
+            >
               <option value="">-- เลือกเวลา --</option>
               {generateTimeSlots().map((slot) => (
                 <option key={slot} value={slot}>
@@ -216,7 +210,11 @@ function App() {
 
           <div className="form-group">
             <label>💬 อาการเบื้องต้น:</label>
-            <textarea value={symptom} onChange={(e) => setSymptom(e.target.value)} required />
+            <textarea
+              value={symptom}
+              onChange={(e) => setSymptom(e.target.value)}
+              required
+            />
           </div>
 
           <button className="btn-submit" type="submit" disabled={loading}>
