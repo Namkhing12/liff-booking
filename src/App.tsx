@@ -7,8 +7,8 @@ import './App.css'
 function App() {
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
-  const [date, setDate] = useState('')
-  const [time, setTime] = useState('')
+  const [date, setDate] = useState('')   // YYYY-MM-DD
+  const [time, setTime] = useState('')   // HH:mm
   const [symptom, setSymptom] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -35,8 +35,12 @@ function App() {
     return times
   }
 
-  // ถ้า column time เป็น TIME → ต้อง HH:mm:ss
-  const toDbTime = (t: string) => (t && t.length === 5 ? `${t}:00` : t)
+  // รวม date + time → scheduled_at
+  const toScheduledAt = (d: string, t: string) => {
+    if (!d || !t) return null
+    const fullTime = t.length === 5 ? `${t}:00` : t
+    return new Date(`${d}T${fullTime}`)
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -47,7 +51,7 @@ function App() {
       const _name = name.trim()
       const _phone = phone.trim()
       const _date = date.trim()
-      const _time = toDbTime(time.trim())
+      const _time = time.trim()
       const _symptom = symptom.trim()
 
       if (!_name || !_phone || !_date || !_time || !_symptom) {
@@ -55,70 +59,61 @@ function App() {
         return
       }
 
+      const scheduledAtDate = toScheduledAt(_date, _time)
+      if (!scheduledAtDate) {
+        alert('เวลาไม่ถูกต้อง')
+        return
+      }
+      const scheduledAt = scheduledAtDate.toISOString()
+
       if (!liff.isLoggedIn()) {
         liff.login()
         return
       }
 
-      let lineId = ''
+      let lineId: string | null = null
       try {
         const profile = await liff.getProfile()
         lineId = profile.userId
       } catch (err) {
-        console.error('LIFF getProfile error:', err)
+        console.warn('LIFF getProfile error:', err)
       }
 
-      // 1) check duplicate
+      // 1) ตรวจว่ามีคิวนี้แล้วหรือยัง
       const { error: checkErr, count } = await supabase
         .from('appointments')
         .select('id', { count: 'exact', head: true })
-        .eq('date', _date)
-        .eq('time', _time)
+        .eq('scheduled_at', scheduledAt)
 
       if (checkErr) {
-        console.error('Supabase select error:', {
-          message: checkErr.message,
-          details: checkErr.details,
-          hint: checkErr.hint,
-          code: (checkErr as any).code,
-        })
+        console.error('Supabase select error:', checkErr)
         alert(`ตรวจสอบเวลาล้มเหลว: ${checkErr.message}`)
         return
       }
-
       if ((count ?? 0) > 0) {
         alert('⛔ เต็มแล้ว กรุณาเลือกเวลาอื่น')
         return
       }
 
-      // 2) insert
+      // 2) Insert
       const { error: insertErr } = await supabase.from('appointments').insert([
         {
-          name: _name,
-          phone: _phone,
-          date: _date,
-          time: _time,
-          symptom: _symptom,
-          line_id: lineId || null,
+          patient_name: _name,
+          hn: _phone,
+          scheduled_at: scheduledAt,
+          chief: _symptom,
+          // เพิ่ม line_id เองถ้าคุณ ALTER TABLE แล้ว
+          line_id: lineId,
         },
       ])
 
       if (insertErr) {
-        console.error('Supabase insert error:', {
-          message: insertErr.message,
-          details: insertErr.details,
-          hint: insertErr.hint,
-          code: (insertErr as any).code,
-        })
-        if ((insertErr as any).code === '23505') {
-          alert('⛔ เวลาโดนจองพอดี กรุณาเลือกเวลาอื่น')
-        } else {
-          alert(`เกิดข้อผิดพลาดในการจอง: ${insertErr.message}`)
-        }
+        console.error('Supabase insert error:', insertErr)
+        alert(`เกิดข้อผิดพลาดในการจอง: ${insertErr.message}`)
         return
       }
 
-      // 3) call Google Apps Script
+      // 3) ส่ง Google Apps Script (optional)
       const response = await fetch(
         'https://script.google.com/macros/s/AKfycbxs1LqDpES8OxbzyoDz1as7qDp3qbFj10sLrLESlrpp7A_BewLpnNGgho681OBtvWAm1A/exec',
         {
@@ -126,8 +121,8 @@ function App() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             name: _name,
-            date: _date,
-            time: _time,
+            phone: _phone,
+            scheduled_at: scheduledAt,
             symptom: _symptom,
           }),
         }
@@ -138,17 +133,18 @@ function App() {
         throw new Error(`Google Apps Script error: ${text || response.status}`)
       }
 
-      // 4) LINE confirm
+      // 4) ส่งข้อความยืนยันกลับ LINE
       try {
         await liff.sendMessages([
           {
             type: 'text',
-            text: `✅ จองสำเร็จ!\n👤 ชื่อ: ${_name}\n📅 วันที่: ${_date}\n🕒 เวลา: ${time}\n📋 อาการ: ${_symptom}`,
+            text: `✅ จองสำเร็จ!\n👤 ชื่อ: ${_name}\n📱 เบอร์: ${_phone}\n📅 เวลา: ${scheduledAtDate.toLocaleString()}\n📋 อาการ: ${_symptom}`,
           },
         ])
       } catch (err) {
         console.warn('sendMessages failed:', err)
       }
+
       liff.closeWindow()
     } catch (err: any) {
       console.error('Unexpected error:', err)
@@ -165,11 +161,7 @@ function App() {
         <form onSubmit={handleSubmit}>
           <div className="form-group">
             <label>👤 ชื่อ-นามสกุล:</label>
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-            />
+            <input value={name} onChange={(e) => setName(e.target.value)} required />
           </div>
 
           <div className="form-group">
@@ -186,21 +178,12 @@ function App() {
 
           <div className="form-group">
             <label>📅 วันที่:</label>
-            <input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              required
-            />
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
           </div>
 
           <div className="form-group">
             <label>🕒 เวลา:</label>
-            <select
-              value={time}
-              onChange={(e) => setTime(e.target.value)}
-              required
-            >
+            <select value={time} onChange={(e) => setTime(e.target.value)} required>
               <option value="">-- เลือกเวลา --</option>
               {generateTimeSlots().map((slot) => (
                 <option key={slot} value={slot}>
@@ -212,11 +195,7 @@ function App() {
 
           <div className="form-group">
             <label>💬 อาการเบื้องต้น:</label>
-            <textarea
-              value={symptom}
-              onChange={(e) => setSymptom(e.target.value)}
-              required
-            />
+            <textarea value={symptom} onChange={(e) => setSymptom(e.target.value)} required />
           </div>
 
           <button className="btn-submit" type="submit" disabled={loading}>
