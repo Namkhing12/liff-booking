@@ -35,8 +35,11 @@ function App() {
     return times
   }
 
-  // ถ้า column time เป็น TIME → ต้อง HH:mm:ss
+  // แปลง "11:00" -> "11:00:00"
   const toDbTime = (t: string) => (t && t.length === 5 ? `${t}:00` : t)
+
+  // รวม date + time -> ISO string สำหรับ scheduled_at
+  const toScheduledAt = (d: string, t: string) => `${d}T${toDbTime(t)}`
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -47,7 +50,7 @@ function App() {
       const _name = name.trim()
       const _phone = phone.trim()
       const _date = date.trim()
-      const _time = toDbTime(time.trim())
+      const _time = time.trim()
       const _symptom = symptom.trim()
 
       if (!_name || !_phone || !_date || !_time || !_symptom) {
@@ -60,63 +63,52 @@ function App() {
         return
       }
 
-      // (คงการดึงโปรไฟล์ไว้เผื่อใช้ส่งข้อความ/แสดงชื่อ)
       try {
         await liff.getProfile()
       } catch (err) {
         console.error('LIFF getProfile error:', err)
       }
 
-      // 1) check duplicate
-      const { error: checkErr, count } = await supabase
+      const scheduledAt = toScheduledAt(_date, _time) // e.g. 2025-09-05T11:00:00
+
+      // 1) ตรวจสอบเวลาซ้ำ
+      const { count, error: checkErr } = await supabase
         .from('appointments')
         .select('id', { count: 'exact', head: true })
-        .eq('date', _date)
-        .eq('time', _time)
+        .eq('scheduled_at', scheduledAt)
 
       if (checkErr) {
-        console.error('Supabase select error:', {
-          message: checkErr.message,
-          details: checkErr.details,
-          hint: checkErr.hint,
-          code: (checkErr as any).code,
-        })
-        alert(`ตรวจสอบเวลาล้มเหลว: ${checkErr.message}`)
+        console.error('Supabase select error:', checkErr)
+        alert(`ตรวจสอบเวลาล้มเหลว: ${checkErr.message || 'ไม่ทราบสาเหตุ'}`)
         return
       }
-
       if ((count ?? 0) > 0) {
         alert('⛔ เต็มแล้ว กรุณาเลือกเวลาอื่น')
         return
       }
 
-      // 2) insert (ตัด line_id ออกแล้ว)
+      // 2) insert (ใช้คอลัมน์ที่มีจริง)
       const { error: insertErr } = await supabase.from('appointments').insert([
         {
-          name: _name,
-          phone: _phone,
-          date: _date,
-          time: _time,
-          symptom: _symptom,
+          patient_name: _name,
+          scheduled_at: scheduledAt,
+          chief_complaint: _symptom,
+          // ถ้าจะเก็บ phone ใน DB ให้เพิ่ม column ก่อน แล้วใส่ตรงนี้ได้เลย
+          // phone: _phone,
         },
       ])
 
       if (insertErr) {
-        console.error('Supabase insert error:', {
-          message: insertErr.message,
-          details: insertErr.details,
-          hint: insertErr.hint,
-          code: (insertErr as any).code,
-        })
+        console.error('Supabase insert error:', insertErr)
         if ((insertErr as any).code === '23505') {
           alert('⛔ เวลาโดนจองพอดี กรุณาเลือกเวลาอื่น')
         } else {
-          alert(`เกิดข้อผิดพลาดในการจอง: ${insertErr.message}`)
+          alert(`เกิดข้อผิดพลาดในการจอง: ${insertErr.message || ''}`)
         }
         return
       }
 
-      // 3) call Google Apps Script
+      // 3) ส่งข้อมูลไป Google Apps Script
       const response = await fetch(
         'https://script.google.com/macros/s/AKfycbxs1LqDpES8OxbzyoDz1as7qDp3qbFj10sLrLESlrpp7A_BewLpnNGgho681OBtvWAm1A/exec',
         {
@@ -124,8 +116,9 @@ function App() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             name: _name,
+            phone: _phone,
             date: _date,
-            time: _time,
+            time: toDbTime(_time),
             symptom: _symptom,
           }),
         }
@@ -136,17 +129,11 @@ function App() {
         throw new Error(`Google Apps Script error: ${text || response.status}`)
       }
 
-      // 4) LINE confirm
-      try {
-        await liff.sendMessages([
-          {
-            type: 'text',
-            text: `✅ จองสำเร็จ!\n👤 ชื่อ: ${_name}\n📅 วันที่: ${_date}\n🕒 เวลา: ${time}\n📋 อาการ: ${_symptom}`,
-          },
-        ])
-      } catch (err) {
-        console.warn('sendMessages failed:', err)
-      }
+      // ✅ แจ้งผู้ใช้ในหน้านี้ (แทนส่ง LINE)
+      alert(
+        `✅ จองสำเร็จ!\n👤 ชื่อ: ${_name}\n📅 วันที่: ${_date}\n🕒 เวลา: ${_time}\n📋 อาการ: ${_symptom}`
+      )
+
       liff.closeWindow()
     } catch (err: any) {
       console.error('Unexpected error:', err)
