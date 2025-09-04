@@ -26,6 +26,27 @@ function App() {
     })()
   }, [])
 
+  useEffect(() => {
+    const fetchData = async () => {
+      const { data, error } = await supabase
+        .from('appointments')
+        .select('*')
+      if (error) {
+        // Log รายละเอียด error
+        console.error(
+          'Supabase select error:',
+          error.message,
+          error.details,
+          error.hint
+        )
+        // แจ้งเตือนผู้ใช้
+        alert('เกิดข้อผิดพลาดในการตรวจสอบเวลา')
+      }
+      // ...existing code...
+    }
+    fetchData()
+  }, [])
+
   const generateTimeSlots = () => {
     const times: string[] = []
     for (let hour = 8; hour <= 17; hour++) {
