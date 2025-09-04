@@ -108,8 +108,7 @@ function App() {
         return
       }
 
-
-      // ✅ แจ้งผู้ใช้ในหน้านี้ (แทนส่ง LINE)
+      // ✅ แจ้งยืนยันบนหน้า (ไม่มีการส่งไป GAS/LINE)
       alert(
         `✅ จองสำเร็จ!\n👤 ชื่อ: ${_name}\n📅 วันที่: ${_date}\n🕒 เวลา: ${_time}\n📋 อาการ: ${_symptom}`
       )
@@ -122,6 +121,9 @@ function App() {
       setLoading(false)
     }
   }
+
+  // กันเลือกวันที่ย้อนหลัง
+  const todayStr = new Date().toISOString().slice(0, 10)
 
   return (
     <div className="booking-container">
@@ -154,6 +156,7 @@ function App() {
             <input
               type="date"
               value={date}
+              min={todayStr}
               onChange={(e) => setDate(e.target.value)}
               required
             />
